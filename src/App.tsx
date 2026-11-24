@@ -10,10 +10,22 @@ type State =
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+const COLLAPSED_KEY = "stacks:collapsed-groups";
+
+function readCollapsed(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export default function App() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
   const panelHeading = useRef<HTMLHeadingElement>(null);
 
@@ -36,10 +48,31 @@ export default function App() {
         .filter((g) => g.stacks.length > 0),
     [groups, query]
   );
+  // A filter shows every match, so it overrides collapsed groups while it's set.
+  const searching = query.trim() !== "";
+  const isCollapsed = (key: string) => !searching && collapsed.has(key);
   const visibleKeys = useMemo(
-    () => visibleGroups.flatMap((g) => g.stacks.map((s) => s.api_key)),
-    [visibleGroups]
+    () =>
+      visibleGroups
+        .filter((g) => searching || !collapsed.has(g.key))
+        .flatMap((g) => g.stacks.map((s) => s.api_key)),
+    [visibleGroups, collapsed, searching]
   );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      // Not persisted; fine.
+    }
+  }, [collapsed]);
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const select = (apiKey: string, focusRow: boolean) => {
     setSelectedKey(apiKey);
@@ -102,6 +135,7 @@ export default function App() {
   const total = data.stacks.length;
   const colorCount = groups.filter((g) => !g.isUncolored).length;
   const selected = selectedKey ? data.stacks.find((s) => s.api_key === selectedKey) : undefined;
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key));
 
   const summary =
     total === 0
@@ -142,12 +176,26 @@ export default function App() {
           <p className="state">No stacks match “{query.trim()}”.</p>
         )}
 
+        {groups.length > 1 && !searching && (
+          <div className="groups-tools">
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          </div>
+        )}
+
         <div className="groups">
           {visibleGroups.map((group) => (
             <GroupSection
               key={group.key}
               group={group}
               appUrl={data.appUrl}
+              collapsed={isCollapsed(group.key)}
+              onToggle={searching ? undefined : () => toggleGroup(group.key)}
               selectedKey={selectedKey}
               onSelect={(apiKey) => {
                 const opening = !selectedKey;
@@ -187,25 +235,56 @@ interface RowHandlers {
 function GroupSection({
   group,
   appUrl,
+  collapsed,
+  onToggle,
   ...handlers
-}: { group: ColorGroup; appUrl: string | null } & RowHandlers) {
-  const headingId = `group-${group.key.replace(/[^a-z0-9]+/gi, "-")}`;
+}: {
+  group: ColorGroup;
+  appUrl: string | null;
+  collapsed: boolean;
+  /** Absent while a filter is set: matches are always shown then. */
+  onToggle?: () => void;
+} & RowHandlers) {
+  const id = group.key.replace(/[^a-z0-9]+/gi, "-");
+  const headingId = `group-${id}`;
+  const listId = `group-list-${id}`;
   const style = group.css ? ({ "--swatch": group.css } as CSSProperties) : undefined;
   const railClass = group.isUncolored || !group.css ? "rail rail--none" : "rail";
+  const names = group.stacks.map((s) => s.name).join(", ");
 
   return (
-    <section className="group" style={style} aria-labelledby={headingId}>
+    <section
+      className={collapsed ? "group group--collapsed" : "group"}
+      style={style}
+      aria-labelledby={headingId}
+    >
       <div className={railClass} aria-hidden="true" />
       <div className="group-body">
         <h2 className="group-title" id={headingId}>
-          {group.label}
-          <span className="group-count">{plural(group.stacks.length, "stack", "stacks")}</span>
+          <button
+            type="button"
+            className="group-toggle"
+            aria-expanded={!collapsed}
+            aria-controls={listId}
+            onClick={onToggle}
+            disabled={!onToggle}
+            title={onToggle ? undefined : "Clear the filter to collapse groups"}
+          >
+            <svg className="chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            {group.label}
+            <span className="group-count">{plural(group.stacks.length, "stack", "stacks")}</span>
+            {collapsed && <span className="group-names">{names}</span>}
+          </button>
         </h2>
-        <ul className="stack-list">
-          {group.stacks.map((stack) => (
-            <StackRow key={stack.uid ?? stack.api_key} stack={stack} appUrl={appUrl} {...handlers} />
-          ))}
-        </ul>
+        {!collapsed && (
+          <ul className="stack-list" id={listId}>
+            {group.stacks.map((stack) => (
+              <StackRow key={stack.uid ?? stack.api_key} stack={stack} appUrl={appUrl} {...handlers} />
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );

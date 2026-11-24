@@ -121,7 +121,7 @@ code {
 
 .groups {
   display: grid;
-  gap: 36px;
+  gap: 28px;
 }
 
 .group {
@@ -147,12 +147,73 @@ code {
 }
 
 .group-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
   margin-bottom: 12px;
   font-size: 15px;
   font-weight: 600;
+}
+
+.group--collapsed .group-title {
+  margin-bottom: 0;
+}
+
+.group-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin-left: -8px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-toggle:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.group-toggle:disabled {
+  cursor: default;
+}
+
+.group-toggle:disabled .chevron {
+  opacity: 0.4;
+}
+
+.group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.group-toggle .chevron {
+  flex: none;
+  align-self: center;
+  transform: rotate(90deg);
+}
+
+.group--collapsed .group-toggle .chevron {
+  transform: none;
+}
+
+.group-names {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.groups-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: -16px 0 12px;
 }
 
 .group-count {
